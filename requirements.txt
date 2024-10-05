@@ -1,5 +1,3 @@
 streamlit
 google-generativeai
 gtts
-time
-tempfile
