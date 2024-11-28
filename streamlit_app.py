@@ -1,17 +1,29 @@
 import time
 import google.generativeai as genai
 import streamlit as st
+import fitz  # PyMuPDF for PDF text extraction
 from tempfile import NamedTemporaryFile
 from gtts import gTTS
 import tempfile
 from google.api_core.exceptions import ResourceExhausted, GoogleAPIError
 
-# Set the API key (replace with your actual API key)
+# Set the new API key
 GEMINI_API_KEY = "AIzaSyBGK_8Doan5w6XCjorUczMxyM9S4fShY5s"
 genai.configure(api_key=GEMINI_API_KEY)
 
+def extract_text_from_pdf(pdf_path):
+    """Extracts text from a PDF using PyMuPDF."""
+    try:
+        with fitz.open(pdf_path) as doc:
+            text = ""
+            for page in doc:
+                text += page.get_text()
+            return text.strip()
+    except Exception as e:
+        st.error(f"Error extracting text from PDF: {str(e)}")
+        return None
+
 def upload_to_gemini(path, mime_type=None):
-    """Uploads the given file to Gemini."""
     try:
         file = genai.upload_file(path, mime_type=mime_type)
         st.success(f"Uploaded file '{file.display_name}' as: {file.uri}")
@@ -21,7 +33,6 @@ def upload_to_gemini(path, mime_type=None):
         return None
 
 def wait_for_files_active(files, timeout=300):
-    """Waits for the given files to be active with a timeout."""
     st.write("Waiting for file processing...")
     start_time = time.time()
     for file in files:
@@ -39,12 +50,11 @@ def wait_for_files_active(files, timeout=300):
     return True
 
 def create_model():
-    """Creates the generative model for summarization."""
     generation_config = {
         "temperature": 0.4,
         "top_p": 0.95,
         "top_k": 40,
-        "max_output_tokens": 2048,  # Adjust token limit for larger summaries
+        "max_output_tokens": 2048,
         "response_mime_type": "text/plain",
     }
 
@@ -52,8 +62,7 @@ def create_model():
         model_name="gemini-1.5-pro-002",
         generation_config=generation_config,
         system_instruction=(
-            "Only allow research paper summarization. Provide a well-written, precise summary "
-            "that explains the purpose in points, under 300 words, and in a professional manner."
+            "Summarize research papers in a concise, professional format with key points in under 300 words."
         ),
     )
 
@@ -67,20 +76,13 @@ def main():
             temp_file.write(uploaded_file.getbuffer())
             temp_file_path = temp_file.name
 
-        uploaded_file_obj = upload_to_gemini(temp_file_path, mime_type="application/pdf")
-        if not uploaded_file_obj:
-            return  # Exit if upload failed
-
-        if not wait_for_files_active([uploaded_file_obj]):
-            return  # Exit if file processing failed
-
-        # Extract text from PDF for input
-        with open(temp_file_path, 'rb') as file:
-            pdf_text = file.read()
+        extracted_text = extract_text_from_pdf(temp_file_path)
+        if not extracted_text:
+            return  # Exit if text extraction failed
 
         try:
             chat_session = model.start_chat(
-                history=[{"role": "user", "content": pdf_text.decode('utf-8')}]
+                history=[{"role": "user", "content": extracted_text}]
             )
             response = chat_session.send_message("Summarize this paper.")
             cleaned_summary = response.text.replace('*', '').strip()
