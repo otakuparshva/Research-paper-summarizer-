@@ -30,8 +30,7 @@ To use the Google Generative AI in this application, you need to obtain an API k
   - `google.generativeai`: To interact with the Google Generative AI API.
   - `gtts`: For converting text to speech.
   - `tempfile`: For handling temporary file storage.
-  - `pymupdf`: also known as fitz
-
+  
 - **Tools**:
   - Google AI Studio (for API access)
   - Git (for version control)
