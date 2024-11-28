@@ -4,11 +4,23 @@ import streamlit as st
 from tempfile import NamedTemporaryFile
 from gtts import gTTS
 import tempfile
+import fitz  # PyMuPDF for PDF text extraction
 from google.api_core.exceptions import ResourceExhausted, GoogleAPIError
 
-# Set the API key (replace with your actual API key)
+# Set the API key
 GEMINI_API_KEY = "AIzaSyBGK_8Doan5w6XCjorUczMxyM9S4fShY5s"
 genai.configure(api_key=GEMINI_API_KEY)
+
+def extract_text_from_pdf(file_path):
+    """Extract text from a PDF file using PyMuPDF."""
+    pdf_text = ""
+    try:
+        with fitz.open(file_path) as pdf:
+            for page in pdf:
+                pdf_text += page.get_text()
+    except Exception as e:
+        st.error(f"Error extracting text from PDF: {str(e)}")
+    return pdf_text
 
 def upload_to_gemini(path, mime_type=None):
     """Uploads the given file to Gemini."""
@@ -74,8 +86,8 @@ def main():
         if not wait_for_files_active([uploaded_file_obj]):
             return
 
-        with open(temp_file_path, 'rb') as file:
-            pdf_text = file.read().decode('utf-8')
+        # Extract text from the uploaded PDF
+        pdf_text = extract_text_from_pdf(temp_file_path)
 
         try:
             st.session_state.chat_session = model.start_chat(
