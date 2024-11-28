@@ -4,9 +4,10 @@ import streamlit as st
 from tempfile import NamedTemporaryFile
 from gtts import gTTS
 import tempfile
+from google.api_core.exceptions import ResourceExhausted, GoogleAPIError
 
-# Directly set the API key
-GEMINI_API_KEY = "AIzaSyCAFfIwn0B-l2wXuflEKn5Vhvmr3orc3bQ"  # Replace with your actual API key
+# Set the API key (replace with your actual API key)
+GEMINI_API_KEY = "AIzaSyBGK_8Doan5w6XCjorUczMxyM9S4fShY5s"
 genai.configure(api_key=GEMINI_API_KEY)
 
 def upload_to_gemini(path, mime_type=None):
@@ -15,19 +16,22 @@ def upload_to_gemini(path, mime_type=None):
         file = genai.upload_file(path, mime_type=mime_type)
         st.success(f"Uploaded file '{file.display_name}' as: {file.uri}")
         return file
-    except Exception as e:
+    except GoogleAPIError as e:
         st.error(f"Error uploading file: {str(e)}")
         return None
 
-def wait_for_files_active(files):
-    """Waits for the given files to be active."""
+def wait_for_files_active(files, timeout=300):
+    """Waits for the given files to be active with a timeout."""
     st.write("Waiting for file processing...")
-    for name in (file.name for file in files):
-        file = genai.get_file(name)
+    start_time = time.time()
+    for file in files:
         while file.state.name == "PROCESSING":
+            if time.time() - start_time > timeout:
+                st.error(f"Timeout exceeded for file {file.name}.")
+                return False
             st.write(".", end="", flush=True)
             time.sleep(10)
-            file = genai.get_file(name)
+            file = genai.get_file(file.name)
         if file.state.name != "ACTIVE":
             st.error(f"File {file.name} failed to process.")
             return False
@@ -35,12 +39,12 @@ def wait_for_files_active(files):
     return True
 
 def create_model():
-    """Creates the generative model for summarization."""
+    """Creates the generative model for summarization and chat."""
     generation_config = {
         "temperature": 0.4,
         "top_p": 0.95,
         "top_k": 40,
-        "max_output_tokens": 8192,
+        "max_output_tokens": 2048,
         "response_mime_type": "text/plain",
     }
 
@@ -48,66 +52,61 @@ def create_model():
         model_name="gemini-1.5-pro-002",
         generation_config=generation_config,
         system_instruction=(
-            "only allow research paper or something related to that. "
-            "summary should be well written and precise that explaining "
-            "whole purpose of research paper in summary format and summary "
-            "should be in points and written in proper professional manner "
-            "and under 300 words." 
-            "Consider key point  of research paper and make sure that "
-
+            "You are an AI assistant for summarizing and answering questions about research papers. "
+            "Provide clear, concise, and professional responses based on the content of the uploaded paper."
         ),
     )
 
 def main():
-    st.title("Research Paper Summarizer")
+    st.title("Research Paper Summarizer & Chat Assistant")
 
     uploaded_file = st.file_uploader("Upload your Research Paper (PDF)", type="pdf")
-    
+
     if st.button("Summarize") and uploaded_file:
-        # Create a temporary file to save the uploaded PDF
         with NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
             temp_file.write(uploaded_file.getbuffer())
             temp_file_path = temp_file.name
 
-        # Upload the file
-        files = [upload_to_gemini(temp_file_path, mime_type="application/pdf")]
-        if files[0] is None:
-            return  # Exit if file upload failed
+        uploaded_file_obj = upload_to_gemini(temp_file_path, mime_type="application/pdf")
+        if not uploaded_file_obj:
+            return
 
-        # Wait for the files to be processed
-        if not wait_for_files_active(files):
-            return  # Exit if file processing failed
+        if not wait_for_files_active([uploaded_file_obj]):
+            return
 
-        # Create the chat session
-        chat_session = model.start_chat(
-            history=[
-                {
-                    "role": "user",
-                    "parts": [
-                        files[0],
-                        "Summarize and explain this research paper in detail.",
-                    ],
-                },
-            ]
-        )
+        with open(temp_file_path, 'rb') as file:
+            pdf_text = file.read().decode('utf-8')
 
-        # Send the message to the model
-        response = chat_session.send_message("Summarize this paper.")
+        try:
+            st.session_state.chat_session = model.start_chat(
+                history=[{"role": "user", "content": pdf_text}]
+            )
+            response = st.session_state.chat_session.send_message("Summarize this paper.")
+            cleaned_summary = response.text.replace('*', '').strip()
+            st.session_state.summary_text = cleaned_summary
+            st.header("Summary")
+            st.text_area("Summarized Text", value=cleaned_summary, height=300, disabled=True)
+        except ResourceExhausted:
+            st.error("Resource limit reached. Try again later or reduce input size.")
+        except Exception as e:
+            st.error(f"An error occurred: {str(e)}")
 
-        # Summary Section
-        st.header("Summary")
-        # Clean summary text by removing any asterisks
-        cleaned_summary = response.text.replace('*', '').strip()
-        st.session_state.summary_text = cleaned_summary  # Store cleaned summary in session state
-        st.text_area("Summarized Text", value=cleaned_summary, height=300, disabled=True)
+    st.header("Chat with the Paper")
+    if 'chat_session' in st.session_state:
+        user_query = st.text_input("Ask a question about the research paper:")
+        if st.button("Ask") and user_query:
+            try:
+                chat_response = st.session_state.chat_session.send_message(user_query)
+                st.write(f"**AI Response:** {chat_response.text.strip()}")
+            except ResourceExhausted:
+                st.error("Resource limit reached. Try again later.")
+            except Exception as e:
+                st.error(f"An error occurred: {str(e)}")
 
-    # Text-to-Speech Section
     st.header("Text-to-Speech")
     if st.button("Convert Summary to Speech"):
         if 'summary_text' in st.session_state:
-            # Generate audio file from summary text
             tts = gTTS(text=st.session_state.summary_text, lang='en')
-            # Save the audio to a temporary file
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as audio_file:
                 tts.save(audio_file.name)
                 st.audio(audio_file.name, format='audio/mp3')
