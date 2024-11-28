@@ -6,11 +6,12 @@ from gtts import gTTS
 import tempfile
 from google.api_core.exceptions import ResourceExhausted, GoogleAPIError
 
-# Set the new API key
+# Set the API key (replace with your actual API key)
 GEMINI_API_KEY = "AIzaSyBGK_8Doan5w6XCjorUczMxyM9S4fShY5s"
 genai.configure(api_key=GEMINI_API_KEY)
 
 def upload_to_gemini(path, mime_type=None):
+    """Uploads the given file to Gemini."""
     try:
         file = genai.upload_file(path, mime_type=mime_type)
         st.success(f"Uploaded file '{file.display_name}' as: {file.uri}")
@@ -20,6 +21,7 @@ def upload_to_gemini(path, mime_type=None):
         return None
 
 def wait_for_files_active(files, timeout=300):
+    """Waits for the given files to be active with a timeout."""
     st.write("Waiting for file processing...")
     start_time = time.time()
     for file in files:
@@ -37,11 +39,12 @@ def wait_for_files_active(files, timeout=300):
     return True
 
 def create_model():
+    """Creates the generative model for summarization."""
     generation_config = {
         "temperature": 0.4,
         "top_p": 0.95,
         "top_k": 40,
-        "max_output_tokens": 2048,
+        "max_output_tokens": 2048,  # Adjust token limit for larger summaries
         "response_mime_type": "text/plain",
     }
 
@@ -49,7 +52,8 @@ def create_model():
         model_name="gemini-1.5-pro-002",
         generation_config=generation_config,
         system_instruction=(
-            "Summarize research papers in a concise, professional format with key points in under 300 words."
+            "Only allow research paper summarization. Provide a well-written, precise summary "
+            "that explains the purpose in points, under 300 words, and in a professional manner."
         ),
     )
 
@@ -65,11 +69,12 @@ def main():
 
         uploaded_file_obj = upload_to_gemini(temp_file_path, mime_type="application/pdf")
         if not uploaded_file_obj:
-            return
+            return  # Exit if upload failed
 
         if not wait_for_files_active([uploaded_file_obj]):
-            return
+            return  # Exit if file processing failed
 
+        # Extract text from PDF for input
         with open(temp_file_path, 'rb') as file:
             pdf_text = file.read()
 
