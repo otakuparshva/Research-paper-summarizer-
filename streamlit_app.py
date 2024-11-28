@@ -4,26 +4,13 @@ import streamlit as st
 from tempfile import NamedTemporaryFile
 from gtts import gTTS
 import tempfile
-import fitz  # PyMuPDF for PDF text extraction
 from google.api_core.exceptions import ResourceExhausted, GoogleAPIError
 
-# Set the API key
+# Set the new API key
 GEMINI_API_KEY = "AIzaSyBGK_8Doan5w6XCjorUczMxyM9S4fShY5s"
 genai.configure(api_key=GEMINI_API_KEY)
 
-def extract_text_from_pdf(file_path):
-    """Extract text from a PDF file using PyMuPDF."""
-    pdf_text = ""
-    try:
-        with fitz.open(file_path) as pdf:
-            for page in pdf:
-                pdf_text += page.get_text()
-    except Exception as e:
-        st.error(f"Error extracting text from PDF: {str(e)}")
-    return pdf_text
-
 def upload_to_gemini(path, mime_type=None):
-    """Uploads the given file to Gemini."""
     try:
         file = genai.upload_file(path, mime_type=mime_type)
         st.success(f"Uploaded file '{file.display_name}' as: {file.uri}")
@@ -33,7 +20,6 @@ def upload_to_gemini(path, mime_type=None):
         return None
 
 def wait_for_files_active(files, timeout=300):
-    """Waits for the given files to be active with a timeout."""
     st.write("Waiting for file processing...")
     start_time = time.time()
     for file in files:
@@ -51,7 +37,6 @@ def wait_for_files_active(files, timeout=300):
     return True
 
 def create_model():
-    """Creates the generative model for summarization and chat."""
     generation_config = {
         "temperature": 0.4,
         "top_p": 0.95,
@@ -64,13 +49,12 @@ def create_model():
         model_name="gemini-1.5-pro-002",
         generation_config=generation_config,
         system_instruction=(
-            "You are an AI assistant for summarizing and answering questions about research papers. "
-            "Provide clear, concise, and professional responses based on the content of the uploaded paper."
+            "Summarize research papers in a concise, professional format with key points in under 300 words."
         ),
     )
 
 def main():
-    st.title("Research Paper Summarizer & Chat Assistant")
+    st.title("Research Paper Summarizer")
 
     uploaded_file = st.file_uploader("Upload your Research Paper (PDF)", type="pdf")
 
@@ -86,14 +70,14 @@ def main():
         if not wait_for_files_active([uploaded_file_obj]):
             return
 
-        # Extract text from the uploaded PDF
-        pdf_text = extract_text_from_pdf(temp_file_path)
+        with open(temp_file_path, 'rb') as file:
+            pdf_text = file.read()
 
         try:
-            st.session_state.chat_session = model.start_chat(
-                history=[{"role": "user", "content": pdf_text}]
+            chat_session = model.start_chat(
+                history=[{"role": "user", "content": pdf_text.decode('utf-8')}]
             )
-            response = st.session_state.chat_session.send_message("Summarize this paper.")
+            response = chat_session.send_message("Summarize this paper.")
             cleaned_summary = response.text.replace('*', '').strip()
             st.session_state.summary_text = cleaned_summary
             st.header("Summary")
@@ -102,18 +86,6 @@ def main():
             st.error("Resource limit reached. Try again later or reduce input size.")
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
-
-    st.header("Chat with the Paper")
-    if 'chat_session' in st.session_state:
-        user_query = st.text_input("Ask a question about the research paper:")
-        if st.button("Ask") and user_query:
-            try:
-                chat_response = st.session_state.chat_session.send_message(user_query)
-                st.write(f"**AI Response:** {chat_response.text.strip()}")
-            except ResourceExhausted:
-                st.error("Resource limit reached. Try again later.")
-            except Exception as e:
-                st.error(f"An error occurred: {str(e)}")
 
     st.header("Text-to-Speech")
     if st.button("Convert Summary to Speech"):
