@@ -6,7 +6,7 @@ from gtts import gTTS
 import tempfile
 
 # Directly set the API key
-GEMINI_API_KEY = "AIzaSyBZqUtKPZzJSLzFec3nrGHCAuQpV6ueqsw"  # Replace with your actual API key
+GEMINI_API_KEY = "AIzaSyDj6TIn7MhV6I2Ose2cS1XpdUc1FmFH2x4"  # Replace with your actual API key
 genai.configure(api_key=GEMINI_API_KEY)
 
 def upload_to_gemini(path, mime_type=None):
@@ -117,3 +117,4 @@ def main():
 if __name__ == "__main__":
     model = create_model()
     main()
+
