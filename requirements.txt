@@ -1,4 +1,13 @@
 streamlit
 google-generativeai
-gtts
-PyMuPDF
+openai
+pymupdf
+faiss-cpu
+sentence-transformers
+rouge-score
+edge-tts
+gTTS
+fpdf2
+numpy
+requests
+python-dotenv
